@@ -7,6 +7,7 @@
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
 #include "FastLED.h"
+#include <EEPROM.h>
 #define NUM_LEDS 49
 CRGB leds[NUM_LEDS];
 
@@ -36,9 +37,27 @@ PubSubClient client(espClient);
 WiFiUDP udpClient;
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, SYSLOG_DEVICE_HOSTNAME, SYSLOG_APP_NAME, LOG_KERN);
 
-uint8_t cR, cG, cB, cBr;
+uint8_t cR, cG, cB, cBr, cOn;
+
+void saveData() {
+  EEPROM.write(0, cR);
+  EEPROM.write(1, cG);
+  EEPROM.write(2, cB);
+  EEPROM.write(3, cBr);
+  EEPROM.write(4, cOn);
+  EEPROM.commit();
+}
+
+void loadData() {
+  cR = EEPROM.read(0);
+  cG = EEPROM.read(1);
+  cB = EEPROM.read(2);
+  cBr = EEPROM.read(3);
+  cOn = EEPROM.read(4);
+}
 
 void setup() {
+  EEPROM.begin(512);
   Serial.begin(115200);
   Serial.println("Booting");
   WiFi.mode(WIFI_STA);
@@ -118,11 +137,14 @@ void setup() {
   digitalWrite(BLUE_LED, LOW);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  cR = 255;
+  /*cR = 255;
   cG = 255;
   cB = 255;
-  cBr = 255;
-  FastLED.showColor(CRGB(cR, cG, cB), cBr);
+  cBr = 255;*/
+  loadData();
+  if (cOn == 1) {
+    FastLED.showColor(CRGB(cR, cG, cB), cBr);
+  }
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -137,20 +159,24 @@ void callback(char* topic, byte* payload, unsigned int length) {
   syslog.logf(LOG_INFO, "mqtt message arrived, topic: %s, message: %s", topic, msg);
   StaticJsonBuffer<200> jsonBuffer;
   JsonObject& root = jsonBuffer.parseObject(msg);
-  const char* state = root["state"];
-  if (strcmp(state, "ON") == 0 ) {
-    if (root.containsKey("color")) {
-      cR = (uint8_t)root["color"]["r"];
-      cG = (uint8_t)root["color"]["g"];
-      cB = (uint8_t)root["color"]["b"];
+  if (root.containsKey("state")) {
+    const char* state = root["state"];
+    if (strcmp(state, "ON") == 0 ) {
+      if (root.containsKey("color")) {
+        cR = (uint8_t)root["color"]["r"];
+        cG = (uint8_t)root["color"]["g"];
+        cB = (uint8_t)root["color"]["b"];
+      }
+      if (root.containsKey("brightness")) {
+        cBr = (uint8_t)root["brightness"];
+      }
+      cOn = 1;
+      FastLED.showColor(CRGB(cR, cG, cB), cBr);
+    } else {
+      cOn = 0;
+      FastLED.showColor(CRGB(cR, cG, cB), 0);
     }
-    if (root.containsKey("brightness")) {
-      cBr = (uint8_t)root["brightness"];
-    }
-    
-    FastLED.showColor(CRGB(cR, cG, cB), cBr);
-  } else {
-    FastLED.showColor(CRGB(cR, cG, cB), 0);
+    saveData();
   }
 }
 
@@ -183,22 +209,5 @@ void loop() {
     reconnect();
   }
   client.loop();
-
-  /*setAll(255, 0, 0); delay(500);
-  setAll(0, 255, 0); delay(500);
-  setAll(0, 0, 255); delay(500);
-  setAll(0, 0, 0); delay(500);*/
-
-  /*FastLED.showColor(CRGB(255, 0, 0), 255);  delay(500);
-  FastLED.showColor(CRGB(0, 255, 0), 255);  delay(500);
-  FastLED.showColor(CRGB(0, 0, 255), 255);  delay(500);
-  FastLED.showColor(CRGB(255, 255, 255), 255);  delay(500);
-  FastLED.showColor(CRGB(0, 0, 0), 255);  delay(500);*/
-
-  /*leds[0] = CRGB::Red; FastLED.show(); delay(500);
-  leds[0] = CRGB::Green; FastLED.show(); delay(500);
-  leds[0] = CRGB::Blue; FastLED.show(); delay(500);
-  leds[0] = CRGB::Black; FastLED.show(); delay(500);*/
-  
 }
 
